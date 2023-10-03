@@ -1,0 +1,21 @@
+CUDA_VISIBLE_DEVICES=5 python run_clip.py \
+    --output_dir ./clip-roberta-finetuned \
+    --model_name_or_path openai/clip-vit-large-patch14 \
+    --data_dir $PWD/coco_data \
+    --dataset_name ydshieh/coco_dataset_script \
+    --dataset_config_name=2017 \
+    --image_column image_path \
+    --caption_column caption \
+    --remove_unused_columns=False \
+    --do_eval  --do_train \
+    --per_device_train_batch_size="256" \
+    --per_device_eval_batch_size="2" \
+    --learning_rate="5e-5" --warmup_steps="0" --weight_decay 0.1 \
+    --overwrite_output_dir \
+    --freeze_vision_model \
+    --fp16 \
+    --max_seq_length 77 \
+    --eval_steps 3 \
+    --max_steps 1000 \
+    --eval_accumulation_steps 100  
+
