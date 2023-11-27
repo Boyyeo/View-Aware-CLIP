@@ -231,11 +231,13 @@ def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     input_ids = torch.tensor([example["input_ids"] for example in examples], dtype=torch.long)
     attention_mask = torch.tensor([example["attention_mask"] for example in examples], dtype=torch.long)
+    caption = [example['caption'] for example in examples]
     return {
         "pixel_values": pixel_values,
         "input_ids": input_ids,
         "attention_mask": attention_mask,
         "return_loss": True,
+        "caption" : caption
     }
 
 
@@ -341,7 +343,18 @@ def main():
             token=model_args.token,
         )
     #dataset['train'] = dataset['train'].select([0, 10, 20, 30, 40, 50])
-    print("dataset:",dataset)
+    #print("dataset:",dataset)
+    
+    #change_validation_set(dataset=dataset,csv_path='car_orthogonal/metadata.csv')
+    #print(dataset)
+    ''' TODO: Setup View Loader 
+    list_image_path ='car_orthogonal/train'
+    train_view_dataset = image_title_dataset(list_image_path=list_image_path,view_data=True)
+    train_view_dataloader = DataLoader(train_view_dataset,batch_size = 4) 
+    view_looper = infiniteloop(train_view_dataloader)
+    view_image, view_caption = next(view_looper)
+    print("view_image:{} view_caption:{}".format(view_image.shape,view_caption))
+    '''
     #dataset['validation'] = dataset['validation'].select([0, 10, 20, 30, 40, 50])
     #print("dataset:",dataset)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
@@ -380,7 +393,7 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
-
+    
     model = AutoModel.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -388,6 +401,11 @@ def main():
         token=model_args.token,
         trust_remote_code=model_args.trust_remote_code,
     )
+
+    #from modeling_clip import MyCLIPModel
+
+    #model = MyCLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+
     config = model.config
 
     def _freeze_params(module):
@@ -400,8 +418,10 @@ def main():
     if model_args.freeze_text_model:
         _freeze_params(model.text_model)
 
+    #print("model:",model)
     # set seed for torch dataloaders
-    set_seed(training_args.seed)
+    #set_seed(training_args.seed)
+    #model.setup_finetune_text_encoder()
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -439,6 +459,8 @@ def main():
     image_transformations = Transform(
         config.vision_config.image_size, image_processor.image_mean, image_processor.image_std
     )
+
+    #print("image_size:{} image_processor: mean:{} std:{}".format( config.vision_config.image_size, image_processor.image_mean, image_processor.image_std))
     image_transformations = torch.jit.script(image_transformations)
 
     # Preprocessing the datasets.
@@ -448,6 +470,7 @@ def main():
         text_inputs = tokenizer(captions, max_length=data_args.max_seq_length, padding="max_length", truncation=True)
         examples["input_ids"] = text_inputs.input_ids
         examples["attention_mask"] = text_inputs.attention_mask
+        #examples["caption"] = captions
         return examples
 
     def transform_images(examples):
@@ -480,7 +503,7 @@ def main():
         train_dataset = train_dataset.map(
             function=tokenize_captions,
             batched=True,
-            remove_columns=[col for col in column_names if col != image_column],
+            remove_columns=[col for col in column_names if col != image_column and col != caption_column],
             num_proc=data_args.preprocessing_num_workers,
             load_from_cache_file=not data_args.overwrite_cache,
             desc="Running tokenizer on train dataset",
@@ -504,7 +527,7 @@ def main():
             function=tokenize_captions,
             batched=True,
             num_proc=data_args.preprocessing_num_workers,
-            remove_columns=[col for col in column_names if col != image_column],
+            remove_columns=[col for col in column_names if col != image_column and col != caption_column],
             load_from_cache_file=not data_args.overwrite_cache,
             desc="Running tokenizer on validation dataset",
         )
@@ -544,9 +567,11 @@ def main():
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         data_collator=collate_fn,
+        #prediction_step=100,
         #compute_metrics=compute_metrics_fn,
     )
 
+    trainer.setup_view_loader()
     # 9. Training
     if training_args.do_train:
         checkpoint = None
