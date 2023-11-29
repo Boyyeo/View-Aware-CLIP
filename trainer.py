@@ -5,7 +5,6 @@ import torch
 from transformers import CLIPProcessor, CLIPTokenizer
 from torchvision.datasets import CIFAR100
 from tqdm import tqdm
-from finetune import image_title_dataset, infiniteloop
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import pandas as pd
@@ -66,9 +65,9 @@ class CLIPTrainer(Trainer):
     def setup_view_loader(self):
         #list_image_path ='car_orthogonal/train'
         #train_view_dataset = image_title_dataset(list_image_path=list_image_path,view_data=True)
-        train_view_dataset = view_dataset(csv_path='3dbicar_train.csv')
-        train_view_dataloader = DataLoader(train_view_dataset,batch_size = 4) 
-        self.view_looper = infiniteloop(train_view_dataloader)
+        #train_view_dataset = view_dataset(csv_path='3dbicar_train.csv')
+        #train_view_dataloader = DataLoader(train_view_dataset,batch_size = 4) 
+        #self.view_looper = infiniteloop(train_view_dataloader)
         self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
         self.best_acc = 0.0
         self.global_steps = 0
@@ -86,7 +85,7 @@ class CLIPTrainer(Trainer):
         #print("captions:",captions)
         device = inputs['input_ids'].device
 
-        view_inputs = next(self.view_looper).to(device)
+        view_inputs = inputs.pop('view_inputs') # next(self.view_looper).to(device)
         #print('---------------------------------------\n')
         #view_inputs.pixel_values = view_inputs.pixel_values.squeeze()
         #view_inputs.input_ids = view_inputs.input_ids.squeeze()
@@ -112,8 +111,10 @@ class CLIPTrainer(Trainer):
             labels = None
         outputs = model(**inputs)
         #outputs_view = model(**view_inputs,return_loss=True)
-        outputs_view = model(input_ids=view_inputs.input_ids.squeeze(),pixel_values=view_inputs.pixel_values.squeeze(),attention_mask=view_inputs.attention_mask.squeeze(), return_loss=True, return_dict=True)
-
+        try:
+            outputs_view = model(input_ids=view_inputs.input_ids.squeeze(),pixel_values=view_inputs.pixel_values.squeeze(),attention_mask=view_inputs.attention_mask.squeeze(), return_loss=True, return_dict=True)
+        except:
+            print("view_input:{} pixel_values:{} attention_mask:{}".format(view_inputs.input_ids.squeeze().shape,view_inputs.pixel_values.squeeze().shape,view_inputs.attention_mask.squeeze().shape))
         #print("view_inputs.input_ids:",view_inputs.input_ids.shape)
         #print("output:{} outputs_view:{}".format(outputs.keys(),outputs_view.keys()))
         
@@ -142,12 +143,12 @@ class CLIPTrainer(Trainer):
             #print("************************** outputs:{} ***************************************".format(outputs.keys()))
             loss_ori = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
             loss_view = outputs_view["loss"] if isinstance(outputs_view, dict) else outputs_view[0]
-            loss = loss_ori + 0.35 * loss_view
+            loss = loss_ori #+ 0.1 * loss_view
             #loss =  loss_view 
             #print("Loss:{} loss_ori:{} loss_view:{}".format(loss.item(),loss_ori.item(),loss_view.item()))
 
         self.global_steps += 1
-        if self.global_steps % 100 == 0:
+        if self.global_steps % 250 == 0:
             self.evaluate()
 
         return (loss, outputs) if return_outputs else loss
@@ -238,17 +239,13 @@ class CLIPTrainer(Trainer):
             num_correct = num_correct + 1 if class_id in indices else num_correct
             
         print("CIFAR100 Accuracy with {} samples is : {}".format(test_samples,num_correct/test_samples))
-   
+        '''
         df = pd.read_csv('3dbicar_test.csv')
         image_path_list = df['image_path'].to_list()
         caption_list = df['caption'].to_list()
         total_num = 0
         total_correct = 0
-
         template_list = ['a photo of a {} 3D model front view','a photo of a {} 3D model back view','a photo of a {} 3D model left side view','a photo of a {} 3D model right side view']
-
-
-
         for image_path, caption in zip(image_path_list, caption_list):
             subject_name = caption.split(' ')[4]
             image = Image.open(image_path)
@@ -270,7 +267,38 @@ class CLIPTrainer(Trainer):
             total_num += 1
 
         accuracy = total_correct / total_num
-        print("Orthogonal View Accuracy:{}".format(accuracy))
+        print("3DBICAR View Accuracy:{}".format(accuracy))
+
+   
+
+        df = pd.read_csv('mvdream_test.csv')
+        image_path_list = df['image_path'].to_list()
+        caption_list = df['caption'].to_list()
+        total_num = 0
+        total_correct = 0
+        template_list = ['a photo of a {} front view','a photo of a {} back view','a photo of a {} left side view','a photo of a {} right side view']
+        for image_path, caption in zip(image_path_list, caption_list):
+            subject_name = caption.split(' ')[4]
+            image = Image.open(image_path)
+            ground_truth = -1
+            query_list = template_list.copy()
+            
+            for i in range(len(query_list)):
+                query_list[i] = query_list[i].format(subject_name)
+                if caption == query_list[i]:
+                    ground_truth = i
+                    #print("ground truth:{} caption:{}".format(ground_truth,caption))
+
+            input_dict = self.processor(text=query_list, images=image, return_tensors="pt", padding=True).to(model.device)
+            outputs_dict = model(**input_dict)
+            logits_per_image, logits_per_text = outputs_dict['logits_per_image'], outputs_dict['logits_per_text']
+            probs = logits_per_image.softmax(dim=-1).cpu().detach()
+            max_idx = torch.argmax(probs.squeeze())
+            total_correct += int(max_idx==ground_truth)
+            total_num += 1
+
+        accuracy = total_correct / total_num
+        print("MVDREAM View Accuracy:{}".format(accuracy))
 
         if accuracy > self.best_acc:
             self.best_acc = accuracy
@@ -280,29 +308,78 @@ class CLIPTrainer(Trainer):
                     #'epoch': epoch,
                     'best_acc': self.best_acc,
                 }
-            torch.save(checkpoint,'checkpoint/3dbicar_view.pyt')
+            torch.save(checkpoint,'checkpoint/mvdream.pyt')
 
-        
-
+        '''
+        df = pd.read_csv('crawl_eval.csv')
+        image_path_list = df['image_path'].to_list()
+        caption_list = df['caption'].to_list()
         total_num = 0
         total_correct = 0
-        dir_list = ['front.png','back.png','left.png','right.png']
-        query_list = ['a photo of car 3D model front view','a photo of car 3D model back view','a photo of car 3D model left side view','a photo of car 3D model right side view']
-        for folder in tqdm(os.listdir("car_orthogonal/test")):
-                for i in range(len(dir_list)):
-                    total_num += 1
-                    file_path = 'car_orthogonal/test/{}/{}'.format(folder,dir_list[i])
-                    image = Image.open(file_path)
-                    input_dict = self.processor(text=query_list, images=image, return_tensors="pt", padding=True).to(model.device)
-                    outputs_dict = model(**input_dict)
-                    logits_per_image, logits_per_text = outputs_dict['logits_per_image'], outputs_dict['logits_per_text']
-                    probs = logits_per_image.softmax(dim=-1).cpu().detach()
-                    max_idx = torch.argmax(probs.squeeze())
-                    #image.save('validate/{}/{}'.format(dir_list[max_idx].split('.png')[0],'{}_'.format(folder)+dir_list[i]))
-                    total_correct += int(max_idx==i)
+        template_list = ['a photo of a {} front view','a photo of a {} left side view','a photo of a {} right side view']
+        for image_path, caption in zip(image_path_list, caption_list):
+            subject_name = caption.split(' ')[4]
+            #print("crawl subject_name:",subject_name)
+            image = Image.open(image_path)
+            ground_truth = -1
+            query_list = template_list.copy()
             
-            
+            for i in range(len(query_list)):
+                query_list[i] = query_list[i].format(subject_name)
+                if caption == query_list[i]:
+                    ground_truth = i
+                    #print("crawl ground truth:{} caption:{}".format(ground_truth,caption))
+
+            input_dict = self.processor(text=query_list, images=image, return_tensors="pt", padding=True).to(model.device)
+            outputs_dict = model(**input_dict)
+            logits_per_image, logits_per_text = outputs_dict['logits_per_image'], outputs_dict['logits_per_text']
+            probs = logits_per_image.softmax(dim=-1).cpu().detach()
+            max_idx = torch.argmax(probs.squeeze())
+            total_correct += int(max_idx==ground_truth)
+            total_num += 1
+
         accuracy = total_correct / total_num
-        print("Car View Accuracy:{}".format(accuracy))
+        print("Crawling Data Accuracy:{}".format(accuracy))
+
+
+        df = pd.read_csv('control_view_test.csv')
+        image_path_list = df['image_path'].to_list()
+        caption_list = df['caption'].to_list()
+        total_num = 0
+        total_correct = 0
+        template_list = ['a photo of a {} front view','a photo of a {} left side view','a photo of a {} right side view']
+        for image_path, caption in zip(image_path_list, caption_list):
+            subject_name = caption.split(' ')[4]
+            #print("control subject_name:",subject_name)
+
+            image = Image.open(image_path)
+            ground_truth = -1
+            query_list = template_list.copy()
+            
+            for i in range(len(query_list)):
+                query_list[i] = query_list[i].format(subject_name)
+                if caption == query_list[i]:
+                    ground_truth = i
+                    #print("control ground truth:{} caption:{}".format(ground_truth,caption))
+
+            input_dict = self.processor(text=query_list, images=image, return_tensors="pt", padding=True).to(model.device)
+            outputs_dict = model(**input_dict)
+            logits_per_image, logits_per_text = outputs_dict['logits_per_image'], outputs_dict['logits_per_text']
+            probs = logits_per_image.softmax(dim=-1).cpu().detach()
+            max_idx = torch.argmax(probs.squeeze())
+            total_correct += int(max_idx==ground_truth)
+            total_num += 1
+
+        accuracy = total_correct / total_num
+        print("Control View Data Accuracy:{}".format(accuracy))
+        if accuracy > self.best_acc:
+            self.best_acc = accuracy
+            checkpoint = {
+                    'model': model.state_dict(),
+                    #'optim': optimizer.state_dict(),
+                    #'epoch': epoch,
+                    'best_acc': self.best_acc,
+                }
+            torch.save(checkpoint,'checkpoint/control_view.pyt')
         
         return {'eval_loss':1.000}

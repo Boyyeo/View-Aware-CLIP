@@ -227,17 +227,29 @@ class Transform(torch.nn.Module):
         return x
 
 
+
+###################### TODO: View Angle Dataset #############################
+from trainer import view_dataset, infiniteloop
+from torch.utils.data import DataLoader
+train_view_dataset = view_dataset(csv_path='control_view_train.csv')
+train_view_dataloader = DataLoader(train_view_dataset,batch_size = 9, shuffle=True) 
+view_looper = infiniteloop(train_view_dataloader)
+##############################################################################
 def collate_fn(examples):
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     input_ids = torch.tensor([example["input_ids"] for example in examples], dtype=torch.long)
     attention_mask = torch.tensor([example["attention_mask"] for example in examples], dtype=torch.long)
     caption = [example['caption'] for example in examples]
+    view_inputs = next(view_looper).to(input_ids.device)
+    #print('view inputs:',view_inputs)
+
     return {
         "pixel_values": pixel_values,
         "input_ids": input_ids,
         "attention_mask": attention_mask,
         "return_loss": True,
-        "caption" : caption
+        "caption" : caption,
+        'view_inputs': view_inputs
     }
 
 
@@ -347,14 +359,7 @@ def main():
     
     #change_validation_set(dataset=dataset,csv_path='car_orthogonal/metadata.csv')
     #print(dataset)
-    ''' TODO: Setup View Loader 
-    list_image_path ='car_orthogonal/train'
-    train_view_dataset = image_title_dataset(list_image_path=list_image_path,view_data=True)
-    train_view_dataloader = DataLoader(train_view_dataset,batch_size = 4) 
-    view_looper = infiniteloop(train_view_dataloader)
-    view_image, view_caption = next(view_looper)
-    print("view_image:{} view_caption:{}".format(view_image.shape,view_caption))
-    '''
+  
     #dataset['validation'] = dataset['validation'].select([0, 10, 20, 30, 40, 50])
     #print("dataset:",dataset)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
