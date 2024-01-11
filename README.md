@@ -26,5 +26,17 @@ bash scripts/demo.sh
 python visualize.py
 ```
 
+| Model | CIFAR10 | View-Aware Crawl | View-Aware Control(Train) | View-Aware Control(Test) |
+| ------------- | ------------- |  -------------  | -------------  | ------------- |
+| Pretrained CLIP   | 93.1 | 53.18| 48.83| 54.54|
+| View-Aware CLIP (w/o) L_clip  | 25.70  | 51.80| 81.43| 61.41|
+| View-Aware CLIP | 89.71 | 53.75  | 82.70 |  62.62|
 
 #### View-Aware CLIP checkpoint can be downloaded from [here](https://drive.google.com/file/d/10tIFHh7Rcmnv4m8osOHdWY6j8EzMJ3Wf/view?usp=sharing)
+Here is our final results:
+
+
+
+```Citation```
+
+Most of the code are modified from huggingface [transformers](https://github.com/huggingface/transformers/tree/main/examples/pytorch/contrastive-image-text) and [diffusers](https://github.com/huggingface/diffusers)
