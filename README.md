@@ -25,3 +25,6 @@ bash scripts/demo.sh
 ```
 python visualize.py
 ```
+
+
+#### View-Aware CLIP checkpoint can be downloaded from [here](https://drive.google.com/file/d/10tIFHh7Rcmnv4m8osOHdWY6j8EzMJ3Wf/view?usp=sharing)
