@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python scripts/t2i.py --text "a photo of a cheetah" --subject_name 'cheetah'

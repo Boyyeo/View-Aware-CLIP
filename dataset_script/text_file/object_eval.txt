@@ -1,0 +1,10 @@
+Eagle
+Elephant
+Hamster
+Monkey
+Penguin
+Tiger
+Wolf
+Goat
+Bear
+Dog
